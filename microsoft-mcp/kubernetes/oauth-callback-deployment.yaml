@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth-callback-server
+  labels:
+    app: oauth-callback-server
+spec:
+  replicas: 1  # Keep at 1 for in-memory storage
+  selector:
+    matchLabels:
+      app: oauth-callback-server
+  template:
+    metadata:
+      labels:
+        app: oauth-callback-server
+    spec:
+      containers:
+      - name: oauth-callback-server
+        image: your-registry/oauth-callback-server:latest  # Update with your image
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: OAUTH_CALLBACK_HOST
+          value: "0.0.0.0"
+        - name: OAUTH_CALLBACK_PORT
+          value: "8000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth-callback-service
+  labels:
+    app: oauth-callback-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: oauth-callback-server

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+        }
+        .header {
+            background: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            color: #333;
+            font-size: 1.5rem;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .logout-btn:hover {
+            background: #c82333;
+        }
+        .get-email-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .get-email-btn:hover {
+            background: #218838;
+        }
+        .get-email-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        .controls {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-right: 1rem;
+        }
+        .controls button:hover {
+            background: #5568d3;
+        }
+        .email-list {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .email-item {
+            padding: 1.5rem;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .email-item:hover {
+            background: #f8f9fa;
+        }
+        .email-item:last-child {
+            border-bottom: none;
+        }
+        .email-subject {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+        .email-from {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 0.3rem;
+        }
+        .email-date {
+            color: #999;
+            font-size: 0.85rem;
+        }
+        .email-preview {
+            color: #777;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            line-height: 1.4;
+        }
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 1rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📧 Your Emails</h1>
+        <div class="user-info">
+            <span>Welcome, <strong>{{ username }}</strong></span>
+            <button id="getEmailBtn" class="get-email-btn" onclick="getUserEmail()">Get My Email</button>
+            <span id="userEmail" style="display:none; color: #667eea; font-weight: bold; margin-left: 0.5rem;">
+                📧 <span id="emailAddress"></span>
+            </span>
+            <a href="/logout" class="logout-btn">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="controls">
+            <button onclick="loadEmails('inbox')">📥 Inbox</button>
+            <button onclick="loadEmails('sent')">📤 Sent Items</button>
+            <button onclick="loadEmails('drafts')">📝 Drafts</button>
+            <select id="limitSelect" onchange="loadEmails(currentFolder)">
+                <option value="10">10 emails</option>
+                <option value="25">25 emails</option>
+                <option value="50">50 emails</option>
+            </select>
+        </div>
+
+        <div id="emailList" class="email-list">
+            <div class="loading">
+                <p>Click a button above to load emails</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFolder = 'inbox';
+
+        async function getUserEmail() {
+            const btn = document.getElementById('getEmailBtn');
+            const emailSpan = document.getElementById('userEmail');
+            const emailAddress = document.getElementById('emailAddress');
+            
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch('/api/get-user-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.email) {
+                    emailAddress.textContent = data.email;
+                    emailSpan.style.display = 'inline';
+                    btn.style.display = 'none';
+                } else {
+                    alert('Error: ' + (data.error || 'Could not retrieve email'));
+                    btn.disabled = false;
+                    btn.textContent = 'Get My Email';
+                }
+            } catch (error) {
+                alert('Error retrieving email: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Get My Email';
+            }
+        }
+
+        async function loadEmails(folder = 'inbox') {
+            currentFolder = folder;
+            const emailList = document.getElementById('emailList');
+            const limit = document.getElementById('limitSelect').value;
+            
+            emailList.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading ${folder}...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`/api/emails?folder=${folder}&limit=${limit}`);
+                const data = await response.json();
+                
+                if (data.success && data.emails.length > 0) {
+                    emailList.innerHTML = data.emails.map(email => `
+                        <div class="email-item">
+                            <div class="email-subject">${escapeHtml(email.subject || 'No subject')}</div>
+                            <div class="email-from">
+                                From: ${email.from?.emailAddress?.address || 'Unknown'}
+                            </div>
+                            <div class="email-date">
+                                ${new Date(email.receivedDateTime).toLocaleString()}
+                            </div>
+                            ${email.bodyPreview ? `
+                                <div class="email-preview">${escapeHtml(email.bodyPreview.substring(0, 150))}...</div>
+                            ` : ''}
+                        </div>
+                    `).join('');
+                } else {
+                    emailList.innerHTML = '<div class="loading"><p>No emails found in ' + folder + '</p></div>';
+                }
+            } catch (error) {
+                emailList.innerHTML = '<div class="loading"><p>Error loading emails: ' + error.message + '</p></div>';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

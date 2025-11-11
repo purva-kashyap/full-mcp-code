@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # For cert-manager (HTTPS)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - yourdomain.com  # Update with your domain
+    secretName: mcp-tls-secret
+  rules:
+  - host: yourdomain.com  # Update with your domain
+    http:
+      paths:
+      # OAuth callback endpoint
+      - path: /oauth(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: oauth-callback-service
+            port:
+              number: 8000
+      # MCP server endpoint
+      - path: /mcp(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: mcp-server-service
+            port:
+              number: 8001

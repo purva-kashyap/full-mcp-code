@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  labels:
+    app: mcp-server
+spec:
+  replicas: 2  # Can scale horizontally
+  selector:
+    matchLabels:
+      app: mcp-server
+  template:
+    metadata:
+      labels:
+        app: mcp-server
+    spec:
+      containers:
+      - name: mcp-server
+        image: your-registry/mcp-server:latest  # Update with your image
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: MICROSOFT_MCP_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-config
+              key: MICROSOFT_MCP_CLIENT_ID
+        - name: MICROSOFT_MCP_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: mcp-secret
+              key: MICROSOFT_MCP_CLIENT_SECRET
+        - name: MICROSOFT_MCP_TENANT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-config
+              key: MICROSOFT_MCP_TENANT_ID
+        - name: MICROSOFT_MCP_REDIRECT_URI
+          value: "https://yourdomain.com/oauth/callback"  # Update with your domain
+        - name: MICROSOFT_MCP_OAUTH_CALLBACK_API_URL
+          value: "http://oauth-callback-service:8000/api/callback/{state}"
+        - name: MICROSOFT_MCP_ENABLE_CALLBACK_SERVER
+          value: "false"  # Disable built-in callback server
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "8001"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server-service
+  labels:
+    app: mcp-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  selector:
+    app: mcp-server

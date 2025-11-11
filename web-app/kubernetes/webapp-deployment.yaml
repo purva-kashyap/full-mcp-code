@@ -1,0 +1,157 @@
+---
+# Redis for session storage (shared across web app pods)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+  type: ClusterIP
+
+---
+# Web Application Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  labels:
+    app: webapp
+spec:
+  replicas: 3  # Multiple replicas for high availability
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+      - name: webapp
+        image: your-registry/ms365-webapp:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MCP_SERVER_URL
+          value: "http://mcp-server-service:8001/mcp/"
+        - name: REDIS_URL
+          value: "redis://redis-service:6379"
+        - name: FLASK_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: webapp-secrets
+              key: secret-key
+        - name: SESSION_COOKIE_SECURE
+          value: "true"  # Set to true in production with HTTPS
+        - name: FLASK_ENV
+          value: "production"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+spec:
+  selector:
+    app: webapp
+  ports:
+  - port: 80
+    targetPort: 5000
+  type: LoadBalancer  # Or ClusterIP if using Ingress
+
+---
+# Ingress (optional - for HTTPS and custom domain)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webapp-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - your-domain.com
+    secretName: webapp-tls
+  rules:
+  - host: your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: webapp-service
+            port:
+              number: 80
+      - path: /oauth
+        pathType: Prefix
+        backend:
+          service:
+            name: oauth-callback-service
+            port:
+              number: 8000
+
+---
+# Secret for Flask session key (create manually)
+# kubectl create secret generic webapp-secrets \
+#   --from-literal=secret-key=$(openssl rand -hex 32)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webapp-secrets
+type: Opaque
+data:
+  secret-key: ""  # Add base64 encoded secret key

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microsoft 365 Email Reader</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 2rem;
+        }
+        p {
+            color: #666;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: 8px;
+            display: none;
+        }
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            display: block;
+        }
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            display: block;
+        }
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            display: block;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📧 Microsoft 365 Email Reader</h1>
+        <p>Sign in with your Microsoft account to read your emails</p>
+        
+        <button id="loginBtn" onclick="startAuth()">
+            Sign in with Microsoft
+        </button>
+        
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        let authWindow = null;
+        let pollInterval = null;
+        let currentState = null;
+
+        async function startAuth() {
+            const btn = document.getElementById('loginBtn');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Starting...';
+            
+            try {
+                // Call backend to start auth
+                const response = await fetch('/api/start-auth', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentState = data.state;
+                    
+                    // Open auth URL in popup
+                    authWindow = window.open(
+                        data.auth_url,
+                        'Microsoft Login',
+                        'width=600,height=700'
+                    );
+                    
+                    status.className = 'status info';
+                    status.textContent = '⏳ Waiting for you to sign in...';
+                    
+                    // Start polling for callback
+                    pollInterval = setInterval(checkCallback, 2000);
+                } else {
+                    throw new Error(data.error || 'Failed to start authentication');
+                }
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = '❌ Error: ' + error.message;
+                btn.disabled = false;
+                btn.textContent = 'Sign in with Microsoft';
+            }
+        }
+
+        async function checkCallback() {
+            try {
+                const response = await fetch('/api/check-callback', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ state: currentState })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.completed) {
+                    // Authentication successful!
+                    clearInterval(pollInterval);
+                    
+                    if (authWindow && !authWindow.closed) {
+                        authWindow.close();
+                    }
+                    
+                    const status = document.getElementById('status');
+                    status.className = 'status success';
+                    status.textContent = '✅ Successfully signed in as ' + data.username;
+                    
+                    // Redirect to dashboard
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1500);
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
