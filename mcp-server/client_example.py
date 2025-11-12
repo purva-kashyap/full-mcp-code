@@ -65,10 +65,13 @@ async def main():
             state = auth_data['state']
             
             print(f"📝 State: {state[:20]}...")
-            print("🌐 Opening browser for authentication...\n")
+            print(f"🔗 Auth URL: {auth_url}\n")
+            print("🌐 Opening browser for authentication...")
             
             # Open browser
-            webbrowser.open(auth_url)
+            opened = webbrowser.open(auth_url)
+            if not opened:
+                print("⚠️  Browser didn't open automatically. Please copy the URL above and paste in browser.")
             
             print("⏳ Waiting for callback (polling every 2 seconds)...")
             
