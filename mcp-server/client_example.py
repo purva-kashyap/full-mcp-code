@@ -19,6 +19,17 @@ async def main():
     async with Client("http://localhost:8001/mcp") as client:
         print("\n📡 Connecting to server...")
         print("✅ Connected!\n")
+
+        # List all available tools
+        print("🛠️  Available Tools:")
+        print("-" * 70)
+        tools_result = await client.call_tool("list_tools", {})
+        tools_data = json.loads(tools_result.content[0].text)
+        
+        for idx, tool in enumerate(tools_data, 1):
+            print(f"{idx:2}. {tool['name']:30} - {tool['description']}")
+        print("-" * 70)
+        print()
         
         # Step 1: Check for existing accounts
         print("🔍 Checking for existing authentication...")
