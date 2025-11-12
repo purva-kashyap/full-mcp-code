@@ -15,6 +15,63 @@ def get_oauth_callback_data():
 
 
 # ============================================================================
+# Utility Tools
+# ============================================================================
+
+@mcp.tool
+def list_tools() -> list[dict[str, str]]:
+    """
+    List all available MCP tools with descriptions.
+    
+    Returns:
+        List of tools with name and description
+    """
+    tools = [
+        {
+            "name": "list_tools",
+            "description": "List all available MCP tools with descriptions"
+        },
+        {
+            "name": "list_accounts",
+            "description": "List all authenticated Microsoft accounts"
+        },
+        {
+            "name": "authenticate_account",
+            "description": "Start OAuth authentication flow for a new account"
+        },
+        {
+            "name": "check_callback",
+            "description": "Check if OAuth callback has been received for a given state"
+        },
+        {
+            "name": "complete_authentication",
+            "description": "Complete authentication using the authorization code from callback"
+        },
+        {
+            "name": "logout_account",
+            "description": "Remove an account from cache (logout)"
+        },
+        {
+            "name": "get_user_profile",
+            "description": "Get Microsoft Graph user profile for authenticated account"
+        },
+        {
+            "name": "list_emails",
+            "description": "List emails from user's mailbox with pagination support"
+        },
+        {
+            "name": "get_email",
+            "description": "Get full details of a specific email by ID"
+        },
+        {
+            "name": "search_emails",
+            "description": "Search emails using Microsoft Graph query syntax"
+        }
+    ]
+    return tools
+
+
+# ============================================================================
 # Account Management Tools
 # ============================================================================
 
