@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-web-app-ingress
+  namespace: mcp-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: letsencrypt-prod  # Optional: for TLS
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: mcp-app.yourdomain.com  # Update with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mcp-web-app
+            port:
+              number: 80
+  # tls:
+  # - hosts:
+  #   - mcp-app.yourdomain.com
+  #   secretName: mcp-web-app-tls

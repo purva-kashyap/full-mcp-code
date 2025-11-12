@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Authenticating - MCP Web App{% endblock %}
+
+{% block content %}
+<div class="content">
+    <div class="card">
+        <h2 id="status">🔐 Ready to Authenticate</h2>
+        <p id="message" style="color: #6c757d; margin-bottom: 30px;">
+            Click the button below to authenticate with Microsoft.
+        </p>
+        <div id="auth-link-container" style="margin-bottom: 20px;">
+            <a href="{{ session.get('auth_url') }}" target="_blank" class="btn btn-primary" id="auth-link" onclick="startPolling()">
+                🔓 Open Authentication Window
+            </a>
+        </div>
+        <div id="spinner" style="margin-top: 30px; display: none;">
+            <p style="color: #6c757d; margin-bottom: 15px;">Waiting for authentication...</p>
+            <div style="display: inline-block; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<script>
+    let pollInterval = null;
+    
+    function startPolling() {
+        // Show spinner
+        document.getElementById('status').textContent = '🔐 Authenticating...';
+        document.getElementById('message').textContent = 'Complete authentication in the popup window.';
+        document.getElementById('spinner').style.display = 'block';
+        
+        // Start polling
+        if (!pollInterval) {
+            pollInterval = setInterval(checkAuth, 1000);
+        }
+    }
+    
+    async function checkAuth() {
+        try {
+            const response = await fetch('/check-auth');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                clearInterval(pollInterval);
+                document.getElementById('status').textContent = '✅ Authentication Successful!';
+                document.getElementById('message').textContent = 'Redirecting...';
+                document.getElementById('auth-link-container').style.display = 'none';
+                document.getElementById('spinner').style.display = 'none';
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 1000);
+            } else if (data.status === 'error') {
+                clearInterval(pollInterval);
+                document.getElementById('status').textContent = '❌ Authentication Failed';
+                document.getElementById('message').textContent = data.message;
+                document.getElementById('auth-link-container').innerHTML = '<a href="/" class="btn btn-secondary">← Back to Home</a>';
+                document.getElementById('spinner').style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+        }
+    }
+    
+    // Timeout after 5 minutes
+    setTimeout(() => {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            document.getElementById('status').textContent = '⏱️ Authentication Timeout';
+            document.getElementById('message').textContent = 'Please try again.';
+            document.getElementById('auth-link-container').innerHTML = '<a href="/" class="btn btn-secondary">← Back to Home</a>';
+            document.getElementById('spinner').style.display = 'none';
+        }
+    }, 300000);
+</script>
+{% endblock %}

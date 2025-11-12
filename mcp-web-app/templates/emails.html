@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Emails - MCP Web App{% endblock %}
+
+{% block content %}
+<div class="nav">
+    <div class="user-info">👤 {{ username }}</div>
+    <div style="display: flex; gap: 10px;">
+        <a href="/" class="btn btn-secondary">🏠 Home</a>
+        <a href="/logout" class="btn btn-danger">Logout</a>
+    </div>
+</div>
+
+<div class="content">
+    <h2 style="margin-bottom: 20px;">📬 Your Emails</h2>
+    
+    {% if emails %}
+        <div class="email-list">
+            {% for email in emails %}
+                <div class="email-item">
+                    <div class="email-subject">{{ email.subject or '(No Subject)' }}</div>
+                    <div class="email-from">From: {{ email.from }}</div>
+                    <div class="email-date">{{ email.received_datetime }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card">
+            <p style="color: #6c757d;">No emails found.</p>
+        </div>
+    {% endif %}
+    
+    <div class="actions">
+        <a href="/" class="btn btn-secondary">← Back to Home</a>
+    </div>
+</div>
+{% endblock %}

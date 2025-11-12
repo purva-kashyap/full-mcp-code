@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Home - MCP Web App{% endblock %}
+
+{% block content %}
+{% if logged_in %}
+    <div class="nav">
+        <div class="user-info">👤 Logged in as: {{ username }}</div>
+        <a href="/logout" class="btn btn-danger">Logout</a>
+    </div>
+    
+    <div class="content">
+        <div class="card">
+            <h2>Welcome, {{ username }}!</h2>
+            <p style="color: #6c757d; margin-bottom: 30px;">
+                You are successfully authenticated. Click below to view your emails.
+            </p>
+            <div class="actions">
+                <a href="/emails" class="btn btn-primary">📬 List My Emails</a>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="content">
+        <div class="card">
+            <h2>Welcome to MCP Web App</h2>
+            <p style="color: #6c757d; margin-bottom: 30px;">
+                Please authenticate with your Microsoft account to access your emails.
+            </p>
+            <a href="/login" class="btn btn-primary">🔐 Login with Microsoft</a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

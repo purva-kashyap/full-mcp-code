@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-web-app
+  namespace: mcp-system
+  labels:
+    app: mcp-web-app
+spec:
+  replicas: 2  # Can scale horizontally (stateless)
+  selector:
+    matchLabels:
+      app: mcp-web-app
+  template:
+    metadata:
+      labels:
+        app: mcp-web-app
+    spec:
+      containers:
+      - name: mcp-web-app
+        image: mcp-web-app:latest  # Update with your registry
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5001
+          name: http
+          protocol: TCP
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-web-app-config
+              key: SECRET_KEY
+        - name: MCP_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-web-app-config
+              key: MCP_SERVER_URL
+        - name: CALLBACK_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-web-app-config
+              key: CALLBACK_BASE_URL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5001
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-web-app
+  namespace: mcp-system
+  labels:
+    app: mcp-web-app
+spec:
+  type: ClusterIP
+  selector:
+    app: mcp-web-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: 5001
+    protocol: TCP

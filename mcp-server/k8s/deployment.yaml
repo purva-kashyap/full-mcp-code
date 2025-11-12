@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  namespace: mcp-system
+  labels:
+    app: mcp-server
+spec:
+  replicas: 1  # Single replica due to in-memory callback storage
+  selector:
+    matchLabels:
+      app: mcp-server
+  template:
+    metadata:
+      labels:
+        app: mcp-server
+    spec:
+      containers:
+      - name: mcp-server
+        image: mcp-server:latest  # Update with your registry
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: fastapi
+          protocol: TCP
+        - containerPort: 8001
+          name: mcp
+          protocol: TCP
+        env:
+        - name: AZURE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: mcp-server-secrets
+              key: AZURE_CLIENT_ID
+        - name: AZURE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: mcp-server-secrets
+              key: AZURE_CLIENT_SECRET
+        - name: AZURE_TENANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: mcp-server-secrets
+              key: AZURE_TENANT_ID
+        - name: OAUTH_REDIRECT_URI
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-server-config
+              key: OAUTH_REDIRECT_URI
+        volumeMounts:
+        - name: token-cache
+          mountPath: /root  # MSAL cache goes to ~/.hybrid_mcp_token_cache.json
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: token-cache
+        persistentVolumeClaim:
+          claimName: mcp-token-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server
+  namespace: mcp-system
+  labels:
+    app: mcp-server
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP  # Important for callback storage
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  selector:
+    app: mcp-server
+  ports:
+  - name: fastapi
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  - name: mcp
+    port: 8001
+    targetPort: 8001
+    protocol: TCP

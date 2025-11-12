@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-server-config
+  namespace: mcp-system
+data:
+  OAUTH_REDIRECT_URI: "http://localhost:8000/callback"  # Update with your actual domain
