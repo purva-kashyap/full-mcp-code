@@ -66,12 +66,34 @@ def get_app() -> msal.ConfidentialClientApplication:
     return app
 
 
-def get_token(account_id: Optional[str] = None) -> str:
+def find_account_by_username(username: str) -> Optional[dict]:
+    """
+    Find account in cache by username (case-insensitive).
+    
+    Args:
+        username: User's email or username
+    
+    Returns:
+        Account dict if found, None otherwise
+    """
+    app = get_app()
+    accounts = app.get_accounts()
+    username_lower = username.lower()
+    
+    for account in accounts:
+        if account.get("username", "").lower() == username_lower:
+            return account
+    return None
+
+
+def get_token(username: Optional[str] = None, account_id: Optional[str] = None) -> str:
     """
     Get access token for account (uses cache, auto-refreshes).
     
     Args:
-        account_id: Account ID to get token for. If None, uses first account.
+        username: User's email/username to get token for (preferred)
+        account_id: Account ID to get token for (alternative)
+        If neither provided, uses first account.
     
     Returns:
         Access token string
@@ -83,7 +105,15 @@ def get_token(account_id: Optional[str] = None) -> str:
     accounts = app.get_accounts()
     
     account = None
-    if account_id:
+    if username:
+        # Find by username (preferred)
+        account = find_account_by_username(username)
+        if not account:
+            raise Exception(
+                f"Account '{username}' not found in cache. Please authenticate first."
+            )
+    elif account_id:
+        # Find by account_id (fallback)
         account = next(
             (a for a in accounts if a["home_account_id"] == account_id), None
         )
@@ -92,6 +122,7 @@ def get_token(account_id: Optional[str] = None) -> str:
                 f"Account with ID {account_id} not found. Please authenticate first."
             )
     elif accounts:
+        # Use first account if neither specified
         account = accounts[0]
     else:
         raise Exception(

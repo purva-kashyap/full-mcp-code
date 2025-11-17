@@ -8,6 +8,7 @@ from . import auth
 async def request(
     method: str,
     endpoint: str,
+    username: Optional[str] = None,
     account_id: Optional[str] = None,
     params: Optional[dict] = None,
     json_data: Optional[dict] = None,
@@ -18,14 +19,15 @@ async def request(
     Args:
         method: HTTP method (GET, POST, etc.)
         endpoint: API endpoint (e.g., "/me" or "/me/messages")
-        account_id: Account ID to use for authentication
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative)
         params: Query parameters
         json_data: JSON body data
     
     Returns:
         Response JSON data
     """
-    token = auth.get_token(account_id)
+    token = auth.get_token(username=username, account_id=account_id)
     
     url = f"https://graph.microsoft.com/v1.0{endpoint}"
     headers = {
@@ -52,12 +54,13 @@ async def request(
         return response.json()
 
 
-async def get_user_profile(account_id: Optional[str] = None) -> dict:
+async def get_user_profile(username: Optional[str] = None, account_id: Optional[str] = None) -> dict:
     """Get user profile information"""
-    return await request("GET", "/me", account_id)
+    return await request("GET", "/me", username=username, account_id=account_id)
 
 
 async def list_emails(
+    username: Optional[str] = None,
     account_id: Optional[str] = None,
     folder: str = "inbox",
     limit: int = 10,
@@ -67,7 +70,8 @@ async def list_emails(
     List emails from specified folder.
     
     Args:
-        account_id: Account ID
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative)
         folder: Folder name (inbox, sent, drafts, deleted, junk)
         limit: Max number of emails
         include_body: Whether to include email body
@@ -98,7 +102,8 @@ async def list_emails(
     result = await request(
         "GET",
         f"/me/mailFolders/{folder_path}/messages",
-        account_id,
+        username=username,
+        account_id=account_id,
         params=params
     )
     
@@ -107,14 +112,16 @@ async def list_emails(
 
 async def get_email(
     email_id: str,
+    username: Optional[str] = None,
     account_id: Optional[str] = None
 ) -> dict:
     """Get specific email by ID"""
-    return await request("GET", f"/me/messages/{email_id}", account_id)
+    return await request("GET", f"/me/messages/{email_id}", username=username, account_id=account_id)
 
 
 async def search_emails(
     query: str,
+    username: Optional[str] = None,
     account_id: Optional[str] = None,
     limit: int = 10
 ) -> list[dict]:
@@ -123,7 +130,8 @@ async def search_emails(
     
     Args:
         query: Search query
-        account_id: Account ID
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative)
         limit: Max results
     
     Returns:
@@ -135,5 +143,5 @@ async def search_emails(
         "$orderby": "receivedDateTime desc"
     }
     
-    result = await request("GET", "/me/messages", account_id, params=params)
+    result = await request("GET", "/me/messages", username=username, account_id=account_id, params=params)
     return result.get("value", [])

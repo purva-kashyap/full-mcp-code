@@ -173,20 +173,31 @@ def complete_authentication(auth_code: str) -> dict[str, str]:
 
 
 @mcp.tool
-def logout_account(account_id: str) -> dict[str, str]:
+def logout_account(username: Optional[str] = None, account_id: Optional[str] = None) -> dict[str, str]:
     """
     Logout an account (remove from cache).
     
     Args:
-        account_id: Account ID to logout
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative)
     
     Returns:
         Success confirmation
     """
+    # Find account if username provided
+    if username and not account_id:
+        account = auth.find_account_by_username(username)
+        if not account:
+            raise Exception(f"Account '{username}' not found")
+        account_id = account["home_account_id"]
+    
+    if not account_id:
+        raise Exception("Either username or account_id must be provided")
+    
     auth.remove_account(account_id)
     return {
         "status": "logged_out",
-        "account_id": account_id,
+        "username": username or "unknown",
         "message": "Account logged out successfully"
     }
 
@@ -196,17 +207,18 @@ def logout_account(account_id: str) -> dict[str, str]:
 # ============================================================================
 
 @mcp.tool
-async def get_user_profile(account_id: Optional[str] = None) -> dict[str, Any]:
+async def get_user_profile(username: Optional[str] = None, account_id: Optional[str] = None) -> dict[str, Any]:
     """
     Get user profile information from Microsoft Graph.
     
     Args:
-        account_id: Account ID (optional, uses first account if not specified)
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative, if neither provided uses first account)
     
     Returns:
         User profile with displayName, mail, userPrincipalName, etc.
     """
-    result = await graph.get_user_profile(account_id)
+    result = await graph.get_user_profile(username=username, account_id=account_id)
     
     return {
         "id": result.get("id"),
@@ -228,7 +240,7 @@ async def get_user_profile(account_id: Optional[str] = None) -> dict[str, Any]:
 
 @mcp.tool
 async def list_emails(
-    account_id: str,
+    username: str,
     folder: str = "inbox",
     limit: int = 10,
     include_body: bool = True,
@@ -237,7 +249,7 @@ async def list_emails(
     List emails from specified folder.
     
     Args:
-        account_id: Account ID to list emails for
+        username: User's email/username to get emails for
         folder: Folder name (inbox, sent, drafts, deleted, junk)
         limit: Maximum number of emails to return (default 10, max 100)
         include_body: Whether to include email body content
@@ -245,10 +257,10 @@ async def list_emails(
     Returns:
         List of email objects with subject, from, to, date, body, etc.
     """
-    print(f"[TOOL] list_emails called with account_id={account_id}, folder={folder}, limit={limit}", file=sys.stderr)
+    print(f"[TOOL] list_emails called with username={username}, folder={folder}, limit={limit}", file=sys.stderr)
     
     try:
-        emails = await graph.list_emails(account_id, folder, limit, include_body)
+        emails = await graph.list_emails(username=username, folder=folder, limit=limit, include_body=include_body)
         print(f"[TOOL] Retrieved {len(emails)} emails", file=sys.stderr)
         return emails
     except Exception as e:
@@ -257,23 +269,25 @@ async def list_emails(
 
 
 @mcp.tool
-async def get_email(email_id: str, account_id: Optional[str] = None) -> dict[str, Any]:
+async def get_email(email_id: str, username: Optional[str] = None, account_id: Optional[str] = None) -> dict[str, Any]:
     """
     Get specific email by ID.
     
     Args:
         email_id: Email ID
-        account_id: Account ID (optional)
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative)
     
     Returns:
         Email object with full details
     """
-    return await graph.get_email(email_id, account_id)
+    return await graph.get_email(email_id, username=username, account_id=account_id)
 
 
 @mcp.tool
 async def search_emails(
     query: str,
+    username: Optional[str] = None,
     account_id: Optional[str] = None,
     limit: int = 10
 ) -> list[dict[str, Any]]:
@@ -282,10 +296,11 @@ async def search_emails(
     
     Args:
         query: Search query
-        account_id: Account ID (optional)
+        username: User's email/username (preferred)
+        account_id: Account ID (alternative)
         limit: Maximum results
     
     Returns:
         List of matching emails
     """
-    return await graph.search_emails(query, account_id, limit)
+    return await graph.search_emails(query, username=username, account_id=account_id, limit=limit)
