@@ -1,15 +1,15 @@
-"""OAuth authentication handling with MSAL and token caching"""
+"""OAuth authentication handling with MSAL and in-memory token caching"""
 import os
 import sys
 import msal
-import pathlib as pl
 import secrets
 from typing import NamedTuple, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
-CACHE_FILE = pl.Path.home() / ".hybrid_mcp_token_cache.json"
+# In-memory cache storage
+_in_memory_cache: Optional[str] = None
 
 # Microsoft Graph scopes (use short-form, not full URLs)
 SCOPES = [
@@ -17,8 +17,6 @@ SCOPES = [
     "Mail.Read",
 ]
 
-# Redirect URI for OAuth callback
-REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
 # Redirect URI for OAuth callback
 REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
 
@@ -29,19 +27,14 @@ class Account(NamedTuple):
 
 
 def _read_cache() -> Optional[str]:
-    """Read token cache from file"""
-    try:
-        return CACHE_FILE.read_text()
-    except FileNotFoundError:
-        return None
+    """Read token cache from memory"""
+    return _in_memory_cache
 
 
 def _write_cache(content: str) -> None:
-    """Write token cache to file with secure permissions"""
-    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_FILE.write_text(content)
-    # Set restrictive permissions (owner read/write only)
-    os.chmod(CACHE_FILE, 0o600)
+    """Write token cache to memory"""
+    global _in_memory_cache
+    _in_memory_cache = content
 
 
 def get_app() -> msal.ConfidentialClientApplication:
@@ -150,11 +143,16 @@ def authenticate_new_account() -> tuple[str, str]:
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
     
+    print(f"[DEBUG AUTH] SCOPES: {SCOPES}", file=sys.stderr)
+    print(f"[DEBUG AUTH] REDIRECT_URI: {REDIRECT_URI}", file=sys.stderr)
+    
     auth_url = app.get_authorization_request_url(
         scopes=SCOPES,
         redirect_uri=REDIRECT_URI,
         state=state
     )
+    
+    print(f"[DEBUG AUTH] Auth URL: {auth_url[:200]}...", file=sys.stderr)
     
     return auth_url, state
 

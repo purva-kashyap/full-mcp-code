@@ -47,9 +47,6 @@ spec:
             configMapKeyRef:
               name: mcp-server-config
               key: OAUTH_REDIRECT_URI
-        volumeMounts:
-        - name: token-cache
-          mountPath: /root  # MSAL cache goes to ~/.hybrid_mcp_token_cache.json
         resources:
           requests:
             memory: "256Mi"
@@ -69,10 +66,6 @@ spec:
             port: 8000
           initialDelaySeconds: 5
           periodSeconds: 10
-      volumes:
-      - name: token-cache
-        persistentVolumeClaim:
-          claimName: mcp-token-cache
 ---
 apiVersion: v1
 kind: Service
