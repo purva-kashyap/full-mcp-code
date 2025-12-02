@@ -145,25 +145,38 @@ async def get_email(user_email: str, email_id: str) -> dict:
 
 async def search_emails(
     user_email: str,
-    query: str,
-    limit: int = 10
+    query: Optional[str] = None,
+    limit: int = 10,
+    filter_query: Optional[str] = None
 ) -> list[dict]:
     """
     Search for emails in a user's mailbox.
     
     Args:
         user_email: User's email address or userPrincipalName
-        query: Search query string
+        query: Optional search query string
         limit: Max results
+        filter_query: Optional OData filter (e.g., "isRead eq false" or "hasAttachments eq true")
     
     Returns:
         List of matching emails
+        
+    Raises:
+        ValueError: If neither query nor filter_query is provided
     """
+    if not query and not filter_query:
+        raise ValueError("At least one of 'query' or 'filter_query' must be provided")
+    
     params = {
-        "$search": f'"{query}"',
         "$top": min(limit, 100),
         "$orderby": "receivedDateTime desc"
     }
+    
+    if query:
+        params["$search"] = f'"{query}"'
+    
+    if filter_query:
+        params["$filter"] = filter_query
     
     result = await request("GET", f"/users/{user_email}/messages", params=params)
     return result.get("value", [])

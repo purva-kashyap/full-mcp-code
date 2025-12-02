@@ -167,18 +167,34 @@ async def get_email(user_email: str, email_id: str) -> dict[str, Any]:
 @mcp.tool
 async def search_emails(
     user_email: str,
-    query: str,
-    limit: int = 10
+    query: str = "",
+    limit: int = 10,
+    filter: str = ""
 ) -> list[dict[str, Any]]:
     """
-    Search for emails in a user's mailbox.
+    Search for emails in a user's mailbox using query and/or filter.
+    
+    At least one of 'query' or 'filter' must be provided.
     
     Args:
         user_email: User's email address or userPrincipalName
-        query: Search query string (e.g., "from:john@example.com subject:meeting")
+        query: Optional search query string (e.g., "from:john@example.com subject:meeting")
         limit: Maximum results (default 10, max 100)
+        filter: Optional OData filter (e.g., "isRead eq false", "hasAttachments eq true", 
+                "from/emailAddress/address eq 'user@example.com'")
     
     Returns:
         List of matching emails
+        
+    Raises:
+        ValueError: If neither query nor filter is provided
     """
-    return await graph.search_emails(user_email, query, limit)
+    if not query and not filter:
+        raise ValueError("At least one of 'query' or 'filter' must be provided")
+    
+    return await graph.search_emails(
+        user_email, 
+        query=query if query else None, 
+        limit=limit, 
+        filter_query=filter if filter else None
+    )
