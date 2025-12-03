@@ -41,6 +41,22 @@ def list_tools() -> list[dict[str, str]]:
         {
             "name": "search_emails",
             "description": "Search emails in any user's mailbox using query syntax"
+        },
+        {
+            "name": "list_teams",
+            "description": "List all Microsoft Teams in the organization"
+        },
+        {
+            "name": "get_team_members",
+            "description": "Get members of a specific team"
+        },
+        {
+            "name": "list_team_channels",
+            "description": "List channels in a specific team"
+        },
+        {
+            "name": "get_channel_messages",
+            "description": "Get messages from a specific team channel"
         }
     ]
     return tools
@@ -198,3 +214,121 @@ async def search_emails(
         limit=limit, 
         filter_query=filter if filter else None
     )
+
+
+# ============================================================================
+# Microsoft Teams Tools
+# ============================================================================
+
+@mcp.tool
+async def list_teams(limit: int = 25) -> list[dict[str, Any]]:
+    """
+    List all Microsoft Teams in the organization.
+    
+    Requires Group.Read.All or Group.ReadWrite.All application permission.
+    
+    Args:
+        limit: Maximum number of teams to return (default 25, max 100)
+    
+    Returns:
+        List of team objects with id, displayName, description, visibility, createdDateTime
+    """
+    teams = await graph.list_teams(limit=limit)
+    return [
+        {
+            "id": t.get("id", ""),
+            "displayName": t.get("displayName", ""),
+            "description": t.get("description", ""),
+            "visibility": t.get("visibility", ""),
+            "createdDateTime": t.get("createdDateTime", "")
+        }
+        for t in teams
+    ]
+
+
+@mcp.tool
+async def get_team_members(team_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    """
+    Get members of a specific Microsoft Team.
+    
+    Requires TeamMember.Read.All or TeamMember.ReadWrite.All application permission.
+    
+    Args:
+        team_id: The ID of the team
+        limit: Maximum number of members to return (default 100, max 100)
+    
+    Returns:
+        List of team member objects with roles and user information
+    """
+    members = await graph.get_team_members(team_id, limit=limit)
+    return [
+        {
+            "id": m.get("id", ""),
+            "displayName": m.get("displayName", ""),
+            "userId": m.get("userId", ""),
+            "email": m.get("email", ""),
+            "roles": m.get("roles", [])
+        }
+        for m in members
+    ]
+
+
+@mcp.tool
+async def list_team_channels(team_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    """
+    List channels in a specific Microsoft Team.
+    
+    Requires Channel.ReadBasic.All, ChannelSettings.Read.All, or higher application permission.
+    
+    Args:
+        team_id: The ID of the team
+        limit: Maximum number of channels to return (default 50, max 100)
+    
+    Returns:
+        List of channel objects with id, displayName, description, membershipType
+    """
+    channels = await graph.list_team_channels(team_id, limit=limit)
+    return [
+        {
+            "id": c.get("id", ""),
+            "displayName": c.get("displayName", ""),
+            "description": c.get("description", ""),
+            "membershipType": c.get("membershipType", ""),
+            "createdDateTime": c.get("createdDateTime", "")
+        }
+        for c in channels
+    ]
+
+
+@mcp.tool
+async def get_channel_messages(
+    team_id: str,
+    channel_id: str,
+    limit: int = 50
+) -> list[dict[str, Any]]:
+    """
+    Get messages from a specific team channel.
+    
+    Requires ChannelMessage.Read.All application permission.
+    
+    Args:
+        team_id: The ID of the team
+        channel_id: The ID of the channel
+        limit: Maximum number of messages to return (default 50, max 50)
+    
+    Returns:
+        List of message objects with content, sender, and timestamp information
+    """
+    messages = await graph.get_channel_messages(team_id, channel_id, limit=limit)
+    return [
+        {
+            "id": m.get("id", ""),
+            "createdDateTime": m.get("createdDateTime", ""),
+            "from": m.get("from", {}),
+            "body": m.get("body", {}),
+            "attachments": m.get("attachments", []),
+            "mentions": m.get("mentions", []),
+            "replyToId": m.get("replyToId")
+        }
+        for m in messages
+    ]

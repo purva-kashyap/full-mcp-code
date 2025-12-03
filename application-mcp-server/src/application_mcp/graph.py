@@ -202,3 +202,103 @@ async def list_users(limit: int = 10) -> list[dict]:
     
     result = await request("GET", "/users", params=params)
     return result.get("value", [])
+
+
+# ============================================================================
+# Microsoft Teams Functions
+# ============================================================================
+
+async def list_teams(limit: int = 25) -> list[dict]:
+    """
+    List all Microsoft Teams in the organization.
+    
+    Requires Group.Read.All or Group.ReadWrite.All permission.
+    
+    Args:
+        limit: Max number of teams to return
+    
+    Returns:
+        List of team objects
+    """
+    params = {
+        "$filter": "resourceProvisioningOptions/Any(x:x eq 'Team')",
+        "$select": "id,displayName,description,visibility,createdDateTime",
+        "$top": min(limit, 100),
+    }
+    
+    result = await request("GET", "/groups", params=params)
+    return result.get("value", [])
+
+
+async def get_team_members(team_id: str, limit: int = 100) -> list[dict]:
+    """
+    Get members of a specific team.
+    
+    Requires TeamMember.Read.All or TeamMember.ReadWrite.All permission.
+    
+    Args:
+        team_id: The ID of the team
+        limit: Max number of members to return
+    
+    Returns:
+        List of team member objects
+    """
+    params = {
+        "$top": min(limit, 100),
+    }
+    
+    result = await request("GET", f"/teams/{team_id}/members", params=params)
+    return result.get("value", [])
+
+
+async def list_team_channels(team_id: str, limit: int = 50) -> list[dict]:
+    """
+    List channels in a specific team.
+    
+    Requires Channel.ReadBasic.All, ChannelSettings.Read.All, or higher permission.
+    
+    Args:
+        team_id: The ID of the team
+        limit: Max number of channels to return
+    
+    Returns:
+        List of channel objects
+    """
+    params = {
+        "$select": "id,displayName,description,membershipType,createdDateTime",
+        "$top": min(limit, 100),
+    }
+    
+    result = await request("GET", f"/teams/{team_id}/channels", params=params)
+    return result.get("value", [])
+
+
+async def get_channel_messages(
+    team_id: str,
+    channel_id: str,
+    limit: int = 50
+) -> list[dict]:
+    """
+    Get messages from a specific channel.
+    
+    Requires ChannelMessage.Read.All permission.
+    
+    Args:
+        team_id: The ID of the team
+        channel_id: The ID of the channel
+        limit: Max number of messages to return
+    
+    Returns:
+        List of message objects
+    """
+    params = {
+        "$top": min(limit, 50),  # Graph API limits this to 50
+        "$orderby": "createdDateTime desc"
+    }
+    
+    result = await request(
+        "GET",
+        f"/teams/{team_id}/channels/{channel_id}/messages",
+        params=params
+    )
+    return result.get("value", [])
