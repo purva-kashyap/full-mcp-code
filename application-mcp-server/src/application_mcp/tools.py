@@ -57,6 +57,42 @@ def list_tools() -> list[dict[str, str]]:
         {
             "name": "get_channel_messages",
             "description": "Get messages from a specific team channel"
+        },
+        {
+            "name": "list_user_online_meetings",
+            "description": "List online meetings for a user with optional filtering"
+        },
+        {
+            "name": "get_online_meeting",
+            "description": "Get details of a specific online meeting"
+        },
+        {
+            "name": "get_meeting_attendance_reports",
+            "description": "Get attendance reports for a meeting"
+        },
+        {
+            "name": "get_meeting_attendees",
+            "description": "Get attendee details from an attendance report"
+        },
+        {
+            "name": "list_meeting_transcripts",
+            "description": "List transcripts for a meeting"
+        },
+        {
+            "name": "get_transcript_content",
+            "description": "Get the content of a meeting transcript"
+        },
+        {
+            "name": "list_meeting_recordings",
+            "description": "List recordings for a meeting"
+        },
+        {
+            "name": "list_calendar_events",
+            "description": "List calendar events for a user with optional filtering"
+        },
+        {
+            "name": "get_calendar_event",
+            "description": "Get details of a specific calendar event"
         }
     ]
     return tools
@@ -332,3 +368,268 @@ async def get_channel_messages(
         }
         for m in messages
     ]
+
+
+# ============================================================================
+# Microsoft Teams Meetings Tools
+# ============================================================================
+
+@mcp.tool
+async def list_user_online_meetings(
+    user_email: str,
+    limit: int = 50,
+    filter: str = ""
+) -> list[dict[str, Any]]:
+    """
+    List online meetings for a specific user.
+    
+    Requires OnlineMeetings.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        limit: Maximum number of meetings to return (default 50, max 100)
+        filter: Optional OData filter (e.g., "startDateTime ge 2025-01-01T00:00:00Z",
+                "endDateTime le 2025-12-31T23:59:59Z")
+    
+    Returns:
+        List of online meeting objects with join URL, start/end times, participants
+    """
+    meetings = await graph.list_user_online_meetings(
+        user_email,
+        limit=limit,
+        filter_query=filter if filter else None
+    )
+    return [
+        {
+            "id": m.get("id", ""),
+            "subject": m.get("subject", ""),
+            "startDateTime": m.get("startDateTime", ""),
+            "endDateTime": m.get("endDateTime", ""),
+            "joinUrl": m.get("joinUrl", ""),
+            "participants": m.get("participants", {}),
+            "createdDateTime": m.get("createdDateTime", "")
+        }
+        for m in meetings
+    ]
+
+
+@mcp.tool
+async def get_online_meeting(
+    user_email: str,
+    meeting_id: str
+) -> dict[str, Any]:
+    """
+    Get detailed information about a specific online meeting.
+    
+    Requires OnlineMeetings.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        Complete meeting object with all details
+    """
+    return await graph.get_online_meeting(user_email, meeting_id)
+
+
+@mcp.tool
+async def get_meeting_attendance_reports(
+    user_email: str,
+    meeting_id: str
+) -> list[dict[str, Any]]:
+    """
+    Get attendance reports for a specific meeting.
+    
+    Requires OnlineMeetingArtifact.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        List of attendance report objects with report IDs and summary info
+    """
+    reports = await graph.get_meeting_attendance_reports(user_email, meeting_id)
+    return [
+        {
+            "id": r.get("id", ""),
+            "totalParticipantCount": r.get("totalParticipantCount", 0),
+            "meetingStartDateTime": r.get("meetingStartDateTime", ""),
+            "meetingEndDateTime": r.get("meetingEndDateTime", "")
+        }
+        for r in reports
+    ]
+
+
+@mcp.tool
+async def get_meeting_attendees(
+    user_email: str,
+    meeting_id: str,
+    report_id: str
+) -> list[dict[str, Any]]:
+    """
+    Get detailed attendee information from a meeting attendance report.
+    
+    Requires OnlineMeetingArtifact.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+        report_id: The ID of the attendance report
+    
+    Returns:
+        List of attendee records with join/leave times and duration
+    """
+    attendees = await graph.get_meeting_attendees(user_email, meeting_id, report_id)
+    return [
+        {
+            "id": a.get("id", ""),
+            "emailAddress": a.get("emailAddress", ""),
+            "displayName": a.get("identity", {}).get("displayName", ""),
+            "role": a.get("role", ""),
+            "totalAttendanceInSeconds": a.get("totalAttendanceInSeconds", 0),
+            "joinDateTime": a.get("attendanceIntervals", [{}])[0].get("joinDateTime", "") if a.get("attendanceIntervals") else "",
+            "leaveDateTime": a.get("attendanceIntervals", [{}])[0].get("leaveDateTime", "") if a.get("attendanceIntervals") else ""
+        }
+        for a in attendees
+    ]
+
+
+@mcp.tool
+async def list_meeting_transcripts(
+    user_email: str,
+    meeting_id: str
+) -> list[dict[str, Any]]:
+    """
+    List transcripts available for a specific meeting.
+    
+    Requires OnlineMeetingTranscript.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        List of transcript metadata objects
+    """
+    transcripts = await graph.list_meeting_transcripts(user_email, meeting_id)
+    return [
+        {
+            "id": t.get("id", ""),
+            "createdDateTime": t.get("createdDateTime", ""),
+            "transcriptContentUrl": t.get("transcriptContentUrl", "")
+        }
+        for t in transcripts
+    ]
+
+
+@mcp.tool
+async def get_transcript_content(
+    user_email: str,
+    meeting_id: str,
+    transcript_id: str
+) -> str:
+    """
+    Get the actual content of a meeting transcript.
+    
+    Requires OnlineMeetingTranscript.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+        transcript_id: The ID of the transcript
+    
+    Returns:
+        Transcript content in VTT format (WebVTT with timestamps and speaker info)
+    """
+    return await graph.get_transcript_content(user_email, meeting_id, transcript_id)
+
+
+@mcp.tool
+async def list_meeting_recordings(
+    user_email: str,
+    meeting_id: str
+) -> list[dict[str, Any]]:
+    """
+    List recordings available for a specific meeting.
+    
+    Requires OnlineMeetingRecording.Read.All application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        List of recording metadata objects with download URLs
+    """
+    recordings = await graph.list_meeting_recordings(user_email, meeting_id)
+    return [
+        {
+            "id": r.get("id", ""),
+            "createdDateTime": r.get("createdDateTime", ""),
+            "recordingContentUrl": r.get("recordingContentUrl", "")
+        }
+        for r in recordings
+    ]
+
+
+@mcp.tool
+async def list_calendar_events(
+    user_email: str,
+    limit: int = 50,
+    filter: str = ""
+) -> list[dict[str, Any]]:
+    """
+    List calendar events for a user (includes Teams meetings scheduled via calendar).
+    
+    Requires Calendars.Read or Calendars.ReadWrite application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        limit: Maximum number of events to return (default 50, max 100)
+        filter: Optional OData filter (e.g., "start/dateTime ge '2025-01-01T00:00:00'",
+                "isOnlineMeeting eq true")
+    
+    Returns:
+        List of calendar event objects with meeting details
+    """
+    events = await graph.list_calendar_events(
+        user_email,
+        limit=limit,
+        filter_query=filter if filter else None
+    )
+    return [
+        {
+            "id": e.get("id", ""),
+            "subject": e.get("subject", ""),
+            "start": e.get("start", {}),
+            "end": e.get("end", {}),
+            "organizer": e.get("organizer", {}),
+            "attendees": e.get("attendees", []),
+            "isOnlineMeeting": e.get("isOnlineMeeting", False),
+            "onlineMeeting": e.get("onlineMeeting", {}),
+            "location": e.get("location", {})
+        }
+        for e in events
+    ]
+
+
+@mcp.tool
+async def get_calendar_event(
+    user_email: str,
+    event_id: str
+) -> dict[str, Any]:
+    """
+    Get detailed information about a specific calendar event.
+    
+    Requires Calendars.Read or Calendars.ReadWrite application permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        event_id: The ID of the calendar event
+    
+    Returns:
+        Complete calendar event object with all meeting details
+    """
+    return await graph.get_calendar_event(user_email, event_id)

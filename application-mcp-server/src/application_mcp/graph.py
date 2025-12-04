@@ -302,3 +302,237 @@ async def get_channel_messages(
         params=params
     )
     return result.get("value", [])
+
+
+async def list_user_online_meetings(
+    user_email: str,
+    limit: int = 50,
+    filter_query: Optional[str] = None
+) -> list[dict]:
+    """
+    List online meetings for a specific user.
+    
+    Requires OnlineMeetings.Read.All or OnlineMeetings.ReadWrite.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        limit: Max number of meetings to return
+        filter_query: Optional OData filter (e.g., "startDateTime ge 2025-01-01T00:00:00Z")
+    
+    Returns:
+        List of online meeting objects
+    """
+    params = {
+        "$top": min(limit, 100),
+        "$orderby": "createdDateTime desc"
+    }
+    
+    if filter_query:
+        params["$filter"] = filter_query
+    
+    result = await request("GET", f"/users/{user_email}/onlineMeetings", params=params)
+    return result.get("value", [])
+
+
+async def get_online_meeting(
+    user_email: str,
+    meeting_id: str
+) -> dict:
+    """
+    Get details of a specific online meeting.
+    
+    Requires OnlineMeetings.Read.All or OnlineMeetings.ReadWrite.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        Online meeting object with full details
+    """
+    return await request("GET", f"/users/{user_email}/onlineMeetings/{meeting_id}")
+
+
+async def get_meeting_attendance_reports(
+    user_email: str,
+    meeting_id: str
+) -> list[dict]:
+    """
+    Get attendance reports for a specific online meeting.
+    
+    Requires OnlineMeetingArtifact.Read.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        List of attendance report objects
+    """
+    result = await request(
+        "GET",
+        f"/users/{user_email}/onlineMeetings/{meeting_id}/attendanceReports"
+    )
+    return result.get("value", [])
+
+
+async def get_meeting_attendees(
+    user_email: str,
+    meeting_id: str,
+    report_id: str
+) -> list[dict]:
+    """
+    Get attendees from a specific attendance report.
+    
+    Requires OnlineMeetingArtifact.Read.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+        report_id: The ID of the attendance report
+    
+    Returns:
+        List of attendee records
+    """
+    result = await request(
+        "GET",
+        f"/users/{user_email}/onlineMeetings/{meeting_id}/attendanceReports/{report_id}/attendanceRecords"
+    )
+    return result.get("value", [])
+
+
+async def list_meeting_transcripts(
+    user_email: str,
+    meeting_id: str
+) -> list[dict]:
+    """
+    List transcripts for a specific online meeting.
+    
+    Requires OnlineMeetingTranscript.Read.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        List of transcript metadata objects
+    """
+    result = await request(
+        "GET",
+        f"/users/{user_email}/onlineMeetings/{meeting_id}/transcripts"
+    )
+    return result.get("value", [])
+
+
+async def get_transcript_content(
+    user_email: str,
+    meeting_id: str,
+    transcript_id: str
+) -> str:
+    """
+    Get the content of a specific meeting transcript.
+    
+    Requires OnlineMeetingTranscript.Read.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+        transcript_id: The ID of the transcript
+    
+    Returns:
+        Transcript content as VTT format string
+    """
+    token = auth.get_token()
+    url = f"https://graph.microsoft.com/v1.0/users/{user_email}/onlineMeetings/{meeting_id}/transcripts/{transcript_id}/content"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    
+    print(f"[GRAPH] GET /users/{user_email}/onlineMeetings/{meeting_id}/transcripts/{transcript_id}/content", file=sys.stderr)
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            url=url,
+            headers=headers,
+            timeout=30.0
+        )
+        
+        if response.status_code >= 400:
+            print(f"[GRAPH] Error {response.status_code}: {response.text}", file=sys.stderr)
+            response.raise_for_status()
+        
+        return response.text
+
+
+async def list_meeting_recordings(
+    user_email: str,
+    meeting_id: str
+) -> list[dict]:
+    """
+    List recordings for a specific online meeting.
+    
+    Requires OnlineMeetingRecording.Read.All permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        meeting_id: The ID of the meeting
+    
+    Returns:
+        List of recording metadata objects
+    """
+    result = await request(
+        "GET",
+        f"/users/{user_email}/onlineMeetings/{meeting_id}/recordings"
+    )
+    return result.get("value", [])
+
+
+async def list_calendar_events(
+    user_email: str,
+    limit: int = 50,
+    filter_query: Optional[str] = None
+) -> list[dict]:
+    """
+    List calendar events for a user.
+    
+    Requires Calendars.Read or Calendars.ReadWrite permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        limit: Max number of events to return
+        filter_query: Optional OData filter (e.g., "start/dateTime ge '2025-01-01T00:00:00'")
+    
+    Returns:
+        List of calendar event objects
+    """
+    params = {
+        "$select": "id,subject,start,end,organizer,attendees,isOnlineMeeting,onlineMeeting,location",
+        "$top": min(limit, 100),
+        "$orderby": "start/dateTime desc"
+    }
+    
+    if filter_query:
+        params["$filter"] = filter_query
+    
+    result = await request("GET", f"/users/{user_email}/events", params=params)
+    return result.get("value", [])
+
+
+async def get_calendar_event(
+    user_email: str,
+    event_id: str
+) -> dict:
+    """
+    Get details of a specific calendar event.
+    
+    Requires Calendars.Read or Calendars.ReadWrite permission.
+    
+    Args:
+        user_email: User's email address or userPrincipalName
+        event_id: The ID of the event
+    
+    Returns:
+        Calendar event object with full details
+    """
+    return await request("GET", f"/users/{user_email}/events/{event_id}")
