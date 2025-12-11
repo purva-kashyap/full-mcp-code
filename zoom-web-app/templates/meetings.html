@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}My Meetings - Zoom Meeting Transcripts{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- User Info -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800">{{ user.first_name }} {{ user.last_name }}</h2>
+                <p class="text-gray-600">{{ user.email }}</p>
+            </div>
+            <a href="/" class="text-purple-600 hover:text-purple-700 font-medium">
+                ← Back
+            </a>
+        </div>
+    </div>
+
+    <!-- Meetings List -->
+    <h3 class="text-xl font-bold text-gray-800 mb-4">
+        Your Meetings ({{ total_count }})
+    </h3>
+
+    {% if meetings|length == 0 %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+        <p class="text-gray-800">No meetings found</p>
+    </div>
+    {% else %}
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for meeting in meetings %}
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="gradient-bg p-4">
+                <h3 class="text-white font-semibold">{{ meeting.topic }}</h3>
+            </div>
+            <div class="p-4">
+                <div class="space-y-2 mb-4 text-sm text-gray-600">
+                    <p>📅 {{ meeting.start_time[:10] }}</p>
+                    <p>⏱️ {{ meeting.duration }} minutes</p>
+                </div>
+                <a href="/summary/{{ meeting.id }}?email={{ email }}" 
+                   class="block text-center gradient-bg text-white font-semibold py-2 px-4 rounded-lg hover:opacity-90">
+                    View Summary
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+

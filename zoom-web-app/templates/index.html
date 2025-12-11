@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Zoom Meeting Transcripts{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto mt-12">
+    <div class="bg-white rounded-lg shadow-xl p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Zoom Transcript Viewer</h1>
+            <p class="text-gray-600">View meeting transcripts and summaries</p>
+        </div>
+
+        <!-- Simple HTML Form -->
+        <form action="/meetings" method="GET">
+            <div class="space-y-4">
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
+                        Enter your email:
+                    </label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email"
+                        placeholder="user@example.com"
+                        required
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                    />
+                </div>
+
+                <button 
+                    type="submit"
+                    class="w-full gradient-bg text-white font-semibold py-3 px-6 rounded-lg hover:opacity-90"
+                >
+                    View My Meetings
+                </button>
+
+                <!-- Demo accounts info -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                    <p class="text-sm font-semibold text-blue-800 mb-2">📌 Demo Accounts:</p>
+                    <ul class="text-sm text-blue-700 space-y-1">
+                        <li>• user1@example.com (3 meetings)</li>
+                        <li>• user2@example.com (1 meeting)</li>
+                    </ul>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
