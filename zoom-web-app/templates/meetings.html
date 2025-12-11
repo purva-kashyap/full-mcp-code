@@ -20,6 +20,13 @@
     <!-- Meetings List -->
     <h3 class="text-xl font-bold text-gray-800 mb-4">
         Your Meetings ({{ total_count }})
+        {% if start_date or end_date %}
+        <span class="text-sm font-normal text-gray-600">
+            - Filtered 
+            {% if start_date %}from {{ start_date }}{% endif %}
+            {% if end_date %}to {{ end_date }}{% endif %}
+        </span>
+        {% endif %}
     </h3>
 
     {% if meetings|length == 0 %}
@@ -38,7 +45,7 @@
                     <p>📅 {{ meeting.start_time[:10] }}</p>
                     <p>⏱️ {{ meeting.duration }} minutes</p>
                 </div>
-                <a href="/summary/{{ meeting.id }}?email={{ email }}" 
+                <a href="/summary/{{ meeting.id }}?email={{ email }}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" 
                    class="block text-center gradient-bg text-white font-semibold py-2 px-4 rounded-lg hover:opacity-90">
                     View Summary
                 </a>

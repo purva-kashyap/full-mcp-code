@@ -326,8 +326,10 @@ def index():
 
 @app.route('/meetings')
 def meetings_page():
-    """Meetings list page - takes email as query parameter"""
+    """Meetings list page - takes email and date range as query parameters"""
     email = request.args.get('email', '').strip().lower()
+    start_date = request.args.get('start_date', '').strip()
+    end_date = request.args.get('end_date', '').strip()
     
     if not email:
         # No email provided, redirect to home
@@ -348,53 +350,38 @@ def meetings_page():
     # Mock: Get meetings for user
     meetings = MOCK_MEETINGS.get(user_id, [])
     
+    # Filter meetings by date range if provided
+    if start_date or end_date:
+        filtered_meetings = []
+        for meeting in meetings:
+            meeting_date = meeting['start_time'][:10]  # Get YYYY-MM-DD part
+            
+            # Check if meeting falls within date range
+            if start_date and meeting_date < start_date:
+                continue
+            if end_date and meeting_date > end_date:
+                continue
+            
+            filtered_meetings.append(meeting)
+        
+        meetings = filtered_meetings
+    
     return render_template('meetings.html', 
                          user=user, 
                          meetings=meetings,
                          total_count=len(meetings),
-                         email=email)
-
-
-@app.route('/meeting/<meeting_id>/summary', methods=['GET'])
-def get_meeting_summary(meeting_id):
-    """Backend API: Get transcript and generate summary for a meeting"""
-    try:
-        # Mock: Get transcript for meeting
-        transcript_data = MOCK_TRANSCRIPTS.get(meeting_id)
-        
-        if not transcript_data:
-            return jsonify({'error': f'Transcript not found for meeting: {meeting_id}'}), 404
-        
-        transcript = transcript_data['transcript']
-        
-        # Find meeting info to get topic
-        meeting_topic = "Unknown Meeting"
-        for user_id, meetings in MOCK_MEETINGS.items():
-            for meeting in meetings:
-                if meeting['id'] == meeting_id:
-                    meeting_topic = meeting['topic']
-                    break
-        
-        # Mock: Generate summary using LLM (replace with actual LLM call)
-        summary = mock_generate_summary(transcript, meeting_topic)
-        
-        return jsonify({
-            'meeting_id': meeting_id,
-            'topic': meeting_topic,
-            'transcript': transcript,
-            'summary': summary,
-            'generated_at': datetime.now().isoformat()
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+                         email=email,
+                         start_date=start_date,
+                         end_date=end_date)
 
 
 @app.route('/summary/<meeting_id>')
 def summary_page(meeting_id):
     """Summary page with transcript and AI summary"""
-    # Get email from query parameter
+    # Get parameters from query string
     email = request.args.get('email', '')
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
     
     # Get transcript data
     transcript_data = MOCK_TRANSCRIPTS.get(meeting_id)
@@ -422,7 +409,9 @@ def summary_page(meeting_id):
                          topic=meeting_topic,
                          transcript=transcript,
                          summary=summary,
-                         email=email)
+                         email=email,
+                         start_date=start_date,
+                         end_date=end_date)
 
 
 @app.route('/health')
@@ -433,4 +422,6 @@ def health():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5002))
+    print(f"🚀 Starting development server on http://localhost:{port}")
+    print("📝 Note: Using Flask development server (not for production)")
     app.run(host='0.0.0.0', port=port, debug=True)
