@@ -8,7 +8,7 @@
     <div class="bg-white rounded-lg shadow-md p-6 mb-6">
         <div class="flex items-center justify-between">
             <h1 class="text-3xl font-bold text-gray-800">{{ topic }}</h1>
-            <a href="/meetings?email={{ email }}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="text-purple-600 hover:text-purple-700 font-medium">
+            <a href="/meetings?email={{ email }}{% if start_date and start_date != '' %}&start_date={{ start_date }}{% endif %}{% if end_date and end_date != '' %}&end_date={{ end_date }}{% endif %}" class="text-purple-600 hover:text-purple-700 font-medium">
                 ← Back
             </a>
         </div>

@@ -45,7 +45,7 @@
                     <p>📅 {{ meeting.start_time[:10] }}</p>
                     <p>⏱️ {{ meeting.duration }} minutes</p>
                 </div>
-                <a href="/summary/{{ meeting.id }}?email={{ email }}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" 
+                <a href="/summary/{{ meeting.id }}?email={{ email }}{% if start_date and start_date != '' %}&start_date={{ start_date }}{% endif %}{% if end_date and end_date != '' %}&end_date={{ end_date }}{% endif %}" 
                    class="block text-center gradient-bg text-white font-semibold py-2 px-4 rounded-lg hover:opacity-90">
                     View Summary
                 </a>
