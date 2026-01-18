@@ -228,16 +228,18 @@ Remember: You have application-level permissions, so you can access any user's d
     async def _load_tools(self):
         """Load available tools from MCP server and convert to OpenAI format"""
         try:
-            # Call list_tools to get available tools
-            result = await self.mcp_client.call_tool("list_tools", {})
-            tools_list = json.loads(result.content[0].text)
-            
             # Get the actual tools from the MCP client
-            mcp_tools = await self.mcp_client.list_tools()
+            mcp_tools_response = await self.mcp_client.list_tools()
+            
+            # Extract tools list - it could be a list directly or have a .tools attribute
+            if hasattr(mcp_tools_response, 'tools'):
+                mcp_tools = mcp_tools_response.tools
+            else:
+                mcp_tools = mcp_tools_response
             
             # Convert to OpenAI function calling format
             self.tools_schema = []
-            for tool in mcp_tools.tools:
+            for tool in mcp_tools:
                 tool_schema = {
                     "type": "function",
                     "function": {
