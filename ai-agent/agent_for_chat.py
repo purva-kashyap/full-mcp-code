@@ -88,25 +88,34 @@ You have access to the following tools:
 
 {tools_description}
 
-When you need to use a tool, respond in this EXACT JSON format:
+When you need to use a tool, respond ONLY with JSON in this EXACT format (no other text):
 {{
   "tool_calls": [
     {{
       "name": "tool_name",
       "arguments": {{"param1": "value1", "param2": "value2"}}
     }}
-  ],
-  "reasoning": "Why you're calling this tool"
+  ]
 }}
 
-If you don't need to call a tool, just respond normally to the user's question.
-IMPORTANT: Only use tools when necessary. If you can answer from previous tool results, do so without calling more tools.
+CRITICAL RULES:
+1. If you need to call a tool, respond with ONLY the JSON above - no explanations, no other text
+2. After tool results are provided, you can respond normally to answer the user's question
+3. Use information from previous tool results (like meeting IDs, user emails) in subsequent tool calls
+4. When user refers to "the first meeting", "that meeting", etc., extract the ID from previous tool results
+5. Only call tools when you don't already have the needed information
+
+Examples:
+User: "List meetings for john@example.com"
+You: {{"tool_calls": [{{"name": "list_online_meetings", "arguments": {{"user_email": "john@example.com"}}}}]}}
+
+Tool returns: "Meeting 1: ID=abc123, Title=Standup. Meeting 2: ID=def456, Title=Review"
+User: "Get transcript for the first meeting"
+You: {{"tool_calls": [{{"name": "get_online_meeting_transcript", "arguments": {{"user_email": "john@example.com", "meeting_id": "abc123"}}}}]}}
 
 ---
 
-{conversation}
-
-Assistant:"""
+{conversation}"""
         else:
             prompt = f"""{system_message or 'You are a helpful assistant.'}
 
@@ -174,8 +183,18 @@ Assistant:"""
         return "\n".join(tools_text)
     
     def _parse_tool_calls(self, content: str) -> Optional[List[Dict]]:
-        """Parse tool calls from LLM response"""
+        """Parse tool calls from LLM response with improved extraction"""
         try:
+            # Clean up the content - remove markdown code blocks if present
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            content = content.strip()
+            
             # Try to find JSON in the response
             start_idx = content.find('{')
             end_idx = content.rfind('}') + 1
@@ -190,18 +209,25 @@ Assistant:"""
                 # Convert to OpenAI-like format
                 tool_calls = []
                 for i, call in enumerate(parsed["tool_calls"]):
-                    tool_calls.append({
-                        "id": f"call_{i}",
-                        "type": "function",
-                        "function": {
-                            "name": call["name"],
-                            "arguments": json.dumps(call["arguments"])
-                        }
-                    })
-                return tool_calls
+                    # Handle both formats: {"name": ..., "arguments": ...} and others
+                    if isinstance(call, dict):
+                        tool_name = call.get("name") or call.get("function")
+                        tool_args = call.get("arguments") or call.get("args") or {}
+                        
+                        tool_calls.append({
+                            "id": f"call_{i}",
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": json.dumps(tool_args) if isinstance(tool_args, dict) else tool_args
+                            }
+                        })
+                return tool_calls if tool_calls else None
             
             return None
-        except (json.JSONDecodeError, KeyError, ValueError):
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            print(f"[Debug] Failed to parse tool calls: {e}")
+            print(f"[Debug] Content was: {content[:300]}...")  # Print first 300 chars for debugging
             return None
 
 
