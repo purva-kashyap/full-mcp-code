@@ -1,8 +1,11 @@
 """MCP tools for Microsoft Graph using Application permissions"""
-import sys
+import logging
 from typing import Any
 from . import graph
 from .mcp_instance import mcp
+from .exceptions import ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -185,20 +188,33 @@ async def list_emails(
     Returns:
         List of email objects with subject, from, to, date, body, etc.
     """
-    print(f"[TOOL] list_emails called with user_email={user_email}, folder={folder}, limit={limit}", file=sys.stderr)
+    logger.debug(
+        "Listing emails",
+        extra={
+            "user_email": user_email,
+            "folder": folder,
+            "limit": limit,
+            "include_body": include_body
+        }
+    )
     
-    try:
-        emails = await graph.list_emails(
-            user_email=user_email,
-            folder=folder,
-            limit=limit,
-            include_body=include_body
-        )
-        print(f"[TOOL] Retrieved {len(emails)} emails", file=sys.stderr)
-        return emails
-    except Exception as e:
-        print(f"[TOOL] ERROR in list_emails: {e}", file=sys.stderr)
-        raise
+    emails = await graph.list_emails(
+        user_email=user_email,
+        folder=folder,
+        limit=limit,
+        include_body=include_body
+    )
+    
+    logger.info(
+        "Retrieved emails",
+        extra={
+            "user_email": user_email,
+            "folder": folder,
+            "count": len(emails)
+        }
+    )
+    
+    return emails
 
 
 @mcp.tool
@@ -239,10 +255,13 @@ async def search_emails(
         List of matching emails
         
     Raises:
-        ValueError: If neither query nor filter is provided
+        ValidationError: If neither query nor filter is provided
     """
     if not query and not filter:
-        raise ValueError("At least one of 'query' or 'filter' must be provided")
+        raise ValidationError(
+            "At least one of 'query' or 'filter' must be provided",
+            details={"query": query, "filter": filter}
+        )
     
     return await graph.search_emails(
         user_email, 

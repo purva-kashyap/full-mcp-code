@@ -6,6 +6,10 @@ from typing import Optional
 from dotenv import load_dotenv
 from .config import config
 from .logging_config import get_logger
+from .exceptions import (
+    TokenAcquisitionError,
+    MissingConfigurationError,
+)
 
 load_dotenv()
 
@@ -23,18 +27,19 @@ def get_app() -> msal.ConfidentialClientApplication:
     """
     client_id = config.AZURE_CLIENT_ID
     if not client_id:
-        raise ValueError("AZURE_CLIENT_ID environment variable is required")
+        raise MissingConfigurationError("AZURE_CLIENT_ID")
 
     client_secret = config.AZURE_CLIENT_SECRET
     if not client_secret:
-        raise ValueError("AZURE_CLIENT_SECRET environment variable is required")
+        raise MissingConfigurationError("AZURE_CLIENT_SECRET")
 
     tenant_id = config.AZURE_TENANT_ID
     if not tenant_id:
-        raise ValueError(
-            "AZURE_TENANT_ID environment variable is required. "
-            "For application permissions, you must specify your organization's tenant ID "
-            "(cannot use 'common' or 'consumers')"
+        raise MissingConfigurationError(
+            "AZURE_TENANT_ID",
+            details={
+                "message": "For application permissions, you must specify your organization's tenant ID (cannot use 'common' or 'consumers')"
+            }
         )
 
     authority = f"https://login.microsoftonline.com/{tenant_id}"
@@ -100,12 +105,17 @@ def get_token() -> str:
             }
         )
         
-        raise Exception(
-            f"Failed to acquire token: {error} - {error_description}\n"
-            f"Make sure:\n"
-            f"1. Application permissions (not delegated) are configured in Azure Portal\n"
-            f"2. Admin consent has been granted for the permissions\n"
-            f"3. AZURE_TENANT_ID is set to your organization's tenant ID"
+        raise TokenAcquisitionError(
+            f"Failed to acquire token: {error}",
+            details={
+                "error": error,
+                "error_description": error_description,
+                "checklist": [
+                    "Application permissions (not delegated) are configured in Azure Portal",
+                    "Admin consent has been granted for the permissions",
+                    "AZURE_TENANT_ID is set to your organization's tenant ID"
+                ]
+            }
         )
 
 

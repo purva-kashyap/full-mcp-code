@@ -1,15 +1,154 @@
 """FastAPI server for health checks and metrics endpoints"""
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from .config import config
 from .metrics import metrics_collector
 from .logging_config import get_logger
 from .rate_limiter import get_limiter_stats
 from . import auth, graph
+from .exceptions import (
+    MCPServerError,
+    AuthenticationError,
+    GraphAPIError,
+    RateLimitError,
+    NetworkError,
+    ConfigurationError,
+    ValidationError,
+)
 
 logger = get_logger(__name__)
 
 app = FastAPI(title="Application MCP Server")
+
+
+# ============================================================================
+# Exception Handlers
+# ============================================================================
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    """Handle validation errors"""
+    logger.warning(
+        "Validation error",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "details": exc.details
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict()
+    )
+
+
+@app.exception_handler(ConfigurationError)
+async def configuration_error_handler(request: Request, exc: ConfigurationError):
+    """Handle configuration errors"""
+    logger.error(
+        "Configuration error",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "details": exc.details
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict()
+    )
+
+
+@app.exception_handler(AuthenticationError)
+async def authentication_error_handler(request: Request, exc: AuthenticationError):
+    """Handle authentication errors"""
+    logger.error(
+        "Authentication error",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "details": exc.details
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict()
+    )
+
+
+@app.exception_handler(RateLimitError)
+async def rate_limit_error_handler(request: Request, exc: RateLimitError):
+    """Handle rate limit errors with retry-after header"""
+    logger.warning(
+        "Rate limit exceeded",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "retry_after": exc.retry_after
+        }
+    )
+    headers = {}
+    if exc.retry_after:
+        headers["Retry-After"] = str(exc.retry_after)
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict(),
+        headers=headers
+    )
+
+
+@app.exception_handler(NetworkError)
+async def network_error_handler(request: Request, exc: NetworkError):
+    """Handle network errors"""
+    logger.error(
+        "Network error",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "details": exc.details
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict()
+    )
+
+
+@app.exception_handler(GraphAPIError)
+async def graph_api_error_handler(request: Request, exc: GraphAPIError):
+    """Handle Microsoft Graph API errors"""
+    logger.error(
+        "Graph API error",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "status_code": exc.status_code,
+            "details": exc.details
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict()
+    )
+
+
+@app.exception_handler(MCPServerError)
+async def mcp_server_error_handler(request: Request, exc: MCPServerError):
+    """Handle all other MCP server errors"""
+    logger.error(
+        "MCP server error",
+        extra={
+            "path": request.url.path,
+            "error": exc.message,
+            "details": exc.details
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict()
+    )
 
 
 @app.get("/")

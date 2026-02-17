@@ -8,6 +8,18 @@ from .logging_config import get_logger
 from .metrics import metrics_collector
 from .concurrency import request_slot
 from .rate_limiter import get_rate_limiter
+from .exceptions import (
+    GraphAPIError,
+    RateLimitError,
+    ServerError,
+    NetworkError,
+    ConnectionError as MCPConnectionError,
+    TimeoutError as MCPTimeoutError,
+    DNSError,
+    MaxRetriesExceededError,
+    classify_http_error,
+    is_retriable_error,
+)
 from . import auth
 
 logger = get_logger(__name__)
@@ -142,24 +154,40 @@ async def request(
                         await asyncio.sleep(min(retry_after, config.RETRY_MAX_WAIT))
                         retry_count += 1
                         continue
+                    else:
+                        # Max retries exceeded for rate limit
+                        raise RateLimitError(
+                            f"Rate limit exceeded for {endpoint} after {max_retries} retries",
+                            retry_after=retry_after,
+                            endpoint=endpoint
+                        )
                 
                 # Handle server errors (5xx) with exponential backoff
-                if response.status_code >= 500 and retry_count < max_retries:
+                if response.status_code >= 500:
                     error_type = "server_error"
-                    wait_time = (2 ** retry_count) * 1
-                    logger.warning(
-                        f"Server error ({response.status_code}). Retrying in {wait_time}s",
-                        extra={
-                            "endpoint": endpoint,
-                            "status_code": response.status_code,
-                            "wait_time": wait_time,
-                            "attempt": retry_count + 1,
-                            "max_retries": max_retries,
-                        }
-                    )
-                    await asyncio.sleep(wait_time)
-                    retry_count += 1
-                    continue
+                    if retry_count < max_retries:
+                        wait_time = (2 ** retry_count) * 1
+                        logger.warning(
+                            f"Server error ({response.status_code}). Retrying in {wait_time}s",
+                            extra={
+                                "endpoint": endpoint,
+                                "status_code": response.status_code,
+                                "wait_time": wait_time,
+                                "attempt": retry_count + 1,
+                                "max_retries": max_retries,
+                            }
+                        )
+                        await asyncio.sleep(wait_time)
+                        retry_count += 1
+                        continue
+                    else:
+                        # Max retries exceeded for server error
+                        raise ServerError(
+                            f"Server error ({response.status_code}) from {endpoint} after {max_retries} retries",
+                            status_code=response.status_code,
+                            endpoint=endpoint,
+                            response_body=response.text
+                        )
                 
                 if response.status_code >= 400:
                     error_type = "client_error"
@@ -186,7 +214,8 @@ async def request(
                     elif response.status_code == 403:
                         logger.error("Permission denied - check application permissions in Azure Portal")
                     
-                    response.raise_for_status()
+                    # Raise appropriate custom exception
+                    raise classify_http_error(response.status_code, endpoint, error_text)
                 
                 logger.debug(
                     f"Graph API success: {method} {endpoint}",
@@ -194,6 +223,55 @@ async def request(
                 )
                 
                 return response.json()
+            
+            except httpx.TimeoutException as e:
+                status_code = 0
+                error_type = "timeout"
+                if retry_count < max_retries:
+                    wait_time = (2 ** retry_count) * 1
+                    logger.warning(
+                        f"Request timeout. Retrying in {wait_time}s",
+                        extra={
+                            "endpoint": endpoint,
+                            "wait_time": wait_time,
+                            "attempt": retry_count + 1,
+                            "max_retries": max_retries,
+                        }
+                    )
+                    await asyncio.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                else:
+                    raise MCPTimeoutError(
+                        f"Request to {endpoint} timed out after {max_retries} retries",
+                        endpoint=endpoint,
+                        details={"timeout_seconds": config.HTTP_TIMEOUT}
+                    )
+            
+            except httpx.ConnectError as e:
+                status_code = 0
+                error_type = "connection"
+                if retry_count < max_retries:
+                    wait_time = (2 ** retry_count) * 1
+                    logger.warning(
+                        f"Connection error. Retrying in {wait_time}s",
+                        extra={
+                            "endpoint": endpoint,
+                            "error": str(e),
+                            "wait_time": wait_time,
+                            "attempt": retry_count + 1,
+                            "max_retries": max_retries,
+                        }
+                    )
+                    await asyncio.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                else:
+                    raise MCPConnectionError(
+                        f"Failed to connect to {endpoint} after {max_retries} retries",
+                        endpoint=endpoint,
+                        details={"original_error": str(e)}
+                    )
             
             except httpx.HTTPStatusError as e:
                 status_code = e.response.status_code
@@ -214,12 +292,47 @@ async def request(
                     await asyncio.sleep(wait_time)
                     retry_count += 1
                     continue
-                raise
+                # Classify and raise appropriate exception
+                raise classify_http_error(
+                    e.response.status_code,
+                    endpoint,
+                    e.response.text
+                )
+            
+            except httpx.RequestError as e:
+                # Generic network errors
+                status_code = 0
+                error_type = "network"
+                if retry_count < max_retries:
+                    wait_time = (2 ** retry_count) * 1
+                    logger.warning(
+                        f"Network error: {type(e).__name__}. Retrying in {wait_time}s",
+                        extra={
+                            "endpoint": endpoint,
+                            "error": str(e),
+                            "wait_time": wait_time,
+                            "attempt": retry_count + 1,
+                            "max_retries": max_retries,
+                        }
+                    )
+                    await asyncio.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                else:
+                    raise NetworkError(
+                        f"Network error accessing {endpoint}: {str(e)}",
+                        endpoint=endpoint,
+                        details={"error_type": type(e).__name__, "original_error": str(e)}
+                    )
         
         # Should not reach here, but just in case
         error_msg = f"Max retries ({max_retries}) exceeded for {method} {endpoint}"
         logger.error(error_msg, extra={"endpoint": endpoint, "max_retries": max_retries})
-        raise Exception(error_msg)
+        raise MaxRetriesExceededError(
+            error_msg,
+            attempts=max_retries,
+            details={"endpoint": endpoint, "method": method}
+        )
     
     finally:
         # Record metrics
