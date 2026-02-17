@@ -1,8 +1,62 @@
 """Microsoft Graph API client using Application permissions"""
-import sys
+import asyncio
+import time
 import httpx
 from typing import Any, Optional
+from .config import config
+from .logging_config import get_logger
+from .metrics import metrics_collector
+from .concurrency import request_slot
+from .rate_limiter import get_rate_limiter
 from . import auth
+
+logger = get_logger(__name__)
+
+# Global HTTP client with connection pooling
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+async def get_http_client() -> httpx.AsyncClient:
+    """
+    Get or create the shared HTTP client with connection pooling.
+    
+    Returns:
+        Shared AsyncClient instance
+    """
+    global _http_client
+    
+    if _http_client is None:
+        limits = httpx.Limits(
+            max_connections=config.HTTP_MAX_CONNECTIONS,
+            max_keepalive_connections=config.HTTP_MAX_KEEPALIVE,
+        )
+        
+        _http_client = httpx.AsyncClient(
+            timeout=config.HTTP_TIMEOUT,
+            limits=limits,
+            follow_redirects=True,
+        )
+        
+        logger.info(
+            "HTTP client initialized",
+            extra={
+                "max_connections": config.HTTP_MAX_CONNECTIONS,
+                "max_keepalive": config.HTTP_MAX_KEEPALIVE,
+                "timeout": config.HTTP_TIMEOUT,
+            }
+        )
+    
+    return _http_client
+
+
+async def close_http_client():
+    """Close the shared HTTP client gracefully"""
+    global _http_client
+    
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
+        logger.info("HTTP client closed")
 
 
 async def request(
@@ -10,6 +64,7 @@ async def request(
     endpoint: str,
     params: Optional[dict] = None,
     json_data: Optional[dict] = None,
+    max_retries: Optional[int] = None,
 ) -> Any:
     """
     Make a request to Microsoft Graph API using application permissions.
@@ -17,53 +72,159 @@ async def request(
     With application permissions, endpoints use /users/{userPrincipalName} 
     instead of /me since there's no authenticated user context.
     
+    Includes retry logic for rate limits (429) and server errors (5xx).
+    Enforces concurrency limits to prevent overwhelming the API.
+    
     Args:
         method: HTTP method (GET, POST, etc.)
         endpoint: API endpoint (e.g., "/users/user@contoso.com/messages")
         params: Query parameters
         json_data: JSON body data
+        max_retries: Maximum number of retries (default: from config)
     
     Returns:
         Response JSON data
     """
-    token = auth.get_token()
+    start_time = time.time()
+    status_code = 0
+    error_type = None
     
-    url = f"https://graph.microsoft.com/v1.0{endpoint}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
-    
-    print(f"[GRAPH] {method} {endpoint}", file=sys.stderr)
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.request(
-            method=method,
-            url=url,
-            headers=headers,
-            params=params,
-            json=json_data,
-            timeout=30.0
-        )
+    try:
+        if max_retries is None:
+            max_retries = config.MAX_RETRIES
         
-        if response.status_code >= 400:
-            error_text = response.text
-            print(f"[GRAPH] Error {response.status_code}: {error_text}", file=sys.stderr)
-            
-            # Provide helpful error messages
-            if response.status_code == 404:
-                if '/users/' in endpoint:
-                    user_id = endpoint.split('/users/')[1].split('/')[0]
-                    print(f"[GRAPH] User not found: {user_id}", file=sys.stderr)
-                    print(f"[GRAPH] This could be an external user or the user doesn't exist", file=sys.stderr)
-                if '/mailFolders/' in endpoint or '/messages' in endpoint:
-                    print(f"[GRAPH] User may not have a mailbox (external guest users often don't)", file=sys.stderr)
-            elif response.status_code == 403:
-                print(f"[GRAPH] Permission denied - check application permissions", file=sys.stderr)
-            
-            response.raise_for_status()
+        token = auth.get_token()
         
-        return response.json()
+        url = f"https://graph.microsoft.com/v1.0{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        
+        logger.debug(f"Graph API request: {method} {endpoint}")
+        
+        # Get rate limiter for this endpoint
+        rate_limiter = get_rate_limiter(endpoint)
+        
+        client = await get_http_client()
+        retry_count = 0
+        
+        while retry_count <= max_retries:
+            try:
+                # Acquire rate limit token first (quota control)
+                async with rate_limiter:
+                    # Then acquire concurrency slot (server capacity control)
+                    async with request_slot():
+                        response = await client.request(
+                            method=method,
+                            url=url,
+                            headers=headers,
+                            params=params,
+                            json=json_data,
+                        )
+                
+                status_code = response.status_code
+                
+                # Handle rate limiting (429)
+                if response.status_code == 429:
+                    error_type = "rate_limit"
+                    retry_after = int(response.headers.get("Retry-After", "5"))
+                    if retry_count < max_retries:
+                        logger.warning(
+                            f"Rate limited (429). Retrying after {retry_after}s",
+                            extra={
+                                "endpoint": endpoint,
+                                "retry_after": retry_after,
+                                "attempt": retry_count + 1,
+                                "max_retries": max_retries,
+                            }
+                        )
+                        await asyncio.sleep(min(retry_after, config.RETRY_MAX_WAIT))
+                        retry_count += 1
+                        continue
+                
+                # Handle server errors (5xx) with exponential backoff
+                if response.status_code >= 500 and retry_count < max_retries:
+                    error_type = "server_error"
+                    wait_time = (2 ** retry_count) * 1
+                    logger.warning(
+                        f"Server error ({response.status_code}). Retrying in {wait_time}s",
+                        extra={
+                            "endpoint": endpoint,
+                            "status_code": response.status_code,
+                            "wait_time": wait_time,
+                            "attempt": retry_count + 1,
+                            "max_retries": max_retries,
+                        }
+                    )
+                    await asyncio.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                
+                if response.status_code >= 400:
+                    error_type = "client_error"
+                    error_text = response.text
+                    logger.error(
+                        f"Graph API error: {response.status_code}",
+                        extra={
+                            "endpoint": endpoint,
+                            "status_code": response.status_code,
+                            "error": error_text[:500],
+                        }
+                    )
+                    
+                    # Provide helpful error messages
+                    if response.status_code == 404:
+                        if '/users/' in endpoint:
+                            user_id = endpoint.split('/users/')[1].split('/')[0]
+                            logger.info(
+                                f"User not found: {user_id}. May be external user or doesn't exist",
+                                extra={"user_id": user_id}
+                            )
+                        if '/mailFolders/' in endpoint or '/messages' in endpoint:
+                            logger.info("User may not have a mailbox (external guest users often don't)")
+                    elif response.status_code == 403:
+                        logger.error("Permission denied - check application permissions in Azure Portal")
+                    
+                    response.raise_for_status()
+                
+                logger.debug(
+                    f"Graph API success: {method} {endpoint}",
+                    extra={"status_code": response.status_code}
+                )
+                
+                return response.json()
+            
+            except httpx.HTTPStatusError as e:
+                status_code = e.response.status_code
+                error_type = "http_error"
+                # Retry on server errors
+                if retry_count < max_retries and e.response.status_code >= 500:
+                    wait_time = (2 ** retry_count) * 1
+                    logger.warning(
+                        f"HTTPStatusError ({e.response.status_code}). Retrying in {wait_time}s",
+                        extra={
+                            "endpoint": endpoint,
+                            "status_code": e.response.status_code,
+                            "wait_time": wait_time,
+                            "attempt": retry_count + 1,
+                            "max_retries": max_retries,
+                        }
+                    )
+                    await asyncio.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                raise
+        
+        # Should not reach here, but just in case
+        error_msg = f"Max retries ({max_retries}) exceeded for {method} {endpoint}"
+        logger.error(error_msg, extra={"endpoint": endpoint, "max_retries": max_retries})
+        raise Exception(error_msg)
+    
+    finally:
+        # Record metrics
+        duration_ms = (time.time() - start_time) * 1000
+        metrics_collector.record_request(endpoint, duration_ms, status_code, error_type)
 
 
 async def get_user_profile(user_email: str) -> dict:
@@ -449,20 +610,26 @@ async def get_transcript_content(
         "Authorization": f"Bearer {token}",
     }
     
-    print(f"[GRAPH] GET /users/{user_email}/onlineMeetings/{meeting_id}/transcripts/{transcript_id}/content", file=sys.stderr)
+    logger.debug(f"Getting transcript content for meeting {meeting_id}")
     
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url=url,
-            headers=headers,
-            timeout=30.0
+    client = await get_http_client()
+    response = await client.get(
+        url=url,
+        headers=headers,
+    )
+    
+    if response.status_code >= 400:
+        logger.error(
+            f"Failed to get transcript content: {response.status_code}",
+            extra={
+                "status_code": response.status_code,
+                "meeting_id": meeting_id,
+                "transcript_id": transcript_id,
+            }
         )
-        
-        if response.status_code >= 400:
-            print(f"[GRAPH] Error {response.status_code}: {response.text}", file=sys.stderr)
-            response.raise_for_status()
-        
-        return response.text
+        response.raise_for_status()
+    
+    return response.text
 
 
 async def list_meeting_recordings(

@@ -1,14 +1,19 @@
 """Authentication using Client Credentials flow with Application permissions"""
 import os
-import sys
+import threading
 import msal
 from typing import Optional
 from dotenv import load_dotenv
+from .config import config
+from .logging_config import get_logger
 
 load_dotenv()
 
-# In-memory token cache (single token for the application)
+logger = get_logger(__name__)
+
+# Thread-safe token cache with threading lock
 _cached_token: Optional[dict] = None
+_token_lock = threading.Lock()
 
 
 def get_app() -> msal.ConfidentialClientApplication:
@@ -16,15 +21,15 @@ def get_app() -> msal.ConfidentialClientApplication:
     Get MSAL application instance for Client Credentials flow.
     No user interaction required - app authenticates with its own credentials.
     """
-    client_id = os.getenv("AZURE_CLIENT_ID")
+    client_id = config.AZURE_CLIENT_ID
     if not client_id:
         raise ValueError("AZURE_CLIENT_ID environment variable is required")
 
-    client_secret = os.getenv("AZURE_CLIENT_SECRET")
+    client_secret = config.AZURE_CLIENT_SECRET
     if not client_secret:
         raise ValueError("AZURE_CLIENT_SECRET environment variable is required")
 
-    tenant_id = os.getenv("AZURE_TENANT_ID")
+    tenant_id = config.AZURE_TENANT_ID
     if not tenant_id:
         raise ValueError(
             "AZURE_TENANT_ID environment variable is required. "
@@ -47,6 +52,7 @@ def get_token() -> str:
     """
     Get access token using Client Credentials flow (Application permissions).
     
+    Thread-safe implementation with token caching.
     This flow is for server-to-server scenarios where the app acts on its own behalf,
     not on behalf of a user. No user interaction is required.
     
@@ -58,44 +64,49 @@ def get_token() -> str:
     """
     global _cached_token
     
-    app = get_app()
-    
-    # Scope for Microsoft Graph with application permissions
-    # Use .default scope which requests all static permissions configured in Azure portal
-    scopes = ["https://graph.microsoft.com/.default"]
-    
-    print(f"[DEBUG AUTH] Acquiring token with Client Credentials flow", file=sys.stderr)
-    print(f"[DEBUG AUTH] Scopes: {scopes}", file=sys.stderr)
-    
-    # Try to get token silently from cache first
-    result = app.acquire_token_silent(scopes, account=None)
-    
-    if not result:
-        # No cached token or expired, acquire new token using client credentials
-        print(f"[DEBUG AUTH] No cached token, acquiring new token...", file=sys.stderr)
-        result = app.acquire_token_for_client(scopes=scopes)
-    else:
-        print(f"[DEBUG AUTH] Using cached token", file=sys.stderr)
-    
-    if "access_token" in result:
-        _cached_token = result
-        print(f"[DEBUG AUTH] Token acquired successfully", file=sys.stderr)
-        return result["access_token"]
-    
-    # Token acquisition failed
-    error = result.get("error", "unknown_error")
-    error_description = result.get("error_description", "No description available")
-    
-    print(f"[DEBUG AUTH] Error: {error}", file=sys.stderr)
-    print(f"[DEBUG AUTH] Description: {error_description}", file=sys.stderr)
-    
-    raise Exception(
-        f"Failed to acquire token: {error} - {error_description}\n"
-        f"Make sure:\n"
-        f"1. Application permissions (not delegated) are configured in Azure Portal\n"
-        f"2. Admin consent has been granted for the permissions\n"
-        f"3. AZURE_TENANT_ID is set to your organization's tenant ID"
-    )
+    with _token_lock:
+        app = get_app()
+        
+        # Scope for Microsoft Graph with application permissions
+        # Use .default scope which requests all static permissions configured in Azure portal
+        scopes = ["https://graph.microsoft.com/.default"]
+        
+        logger.debug("Acquiring token with Client Credentials flow")
+        
+        # Try to get token silently from cache first
+        result = app.acquire_token_silent(scopes, account=None)
+        
+        if not result:
+            # No cached token or expired, acquire new token using client credentials
+            logger.info("No cached token, acquiring new token from Azure AD")
+            result = app.acquire_token_for_client(scopes=scopes)
+        else:
+            logger.debug("Using cached token")
+        
+        if "access_token" in result:
+            _cached_token = result
+            logger.debug("Token acquired successfully")
+            return result["access_token"]
+        
+        # Token acquisition failed
+        error = result.get("error", "unknown_error")
+        error_description = result.get("error_description", "No description available")
+        
+        logger.error(
+            "Failed to acquire token",
+            extra={
+                "error": error,
+                "error_description": error_description,
+            }
+        )
+        
+        raise Exception(
+            f"Failed to acquire token: {error} - {error_description}\n"
+            f"Make sure:\n"
+            f"1. Application permissions (not delegated) are configured in Azure Portal\n"
+            f"2. Admin consent has been granted for the permissions\n"
+            f"3. AZURE_TENANT_ID is set to your organization's tenant ID"
+        )
 
 
 def clear_token_cache() -> None:
