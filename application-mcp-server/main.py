@@ -98,6 +98,8 @@ def handle_shutdown_signal(signum, frame):
     signal_name = signal.Signals(signum).name
     logger.info(f"Received signal {signal_name}, initiating graceful shutdown...")
     _shutdown_event.set()
+    # Raise KeyboardInterrupt to stop asyncio.run()
+    raise KeyboardInterrupt()
 
 
 def main():
@@ -158,7 +160,7 @@ def main():
     try:
         asyncio.run(run_server())
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
+        logger.info("Server shutdown complete")
     except Exception as e:
         logger.error("Server error", exc_info=True)
         sys.exit(1)
