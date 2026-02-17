@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 # Global flag for graceful shutdown
 _shutdown_event = asyncio.Event()
+_shutdown_timeout = 25  # Kubernetes default grace period is 30s, leave 5s buffer
 
 
 async def run_server():
@@ -78,17 +79,27 @@ async def run_server():
     except asyncio.CancelledError:
         logger.info("Server tasks cancelled")
     finally:
-        # Cancel all tasks
+        # Cancel all tasks with timeout
+        logger.info("Cancelling server tasks...")
         for task in tasks:
             if not task.done():
                 task.cancel()
         
-        # Wait for all tasks to complete
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # Wait for all tasks to complete with timeout
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Shutdown timeout ({_shutdown_timeout}s) exceeded, forcing shutdown")
         
         # Cleanup
         logger.info("Closing HTTP client...")
-        await close_http_client()
+        try:
+            await asyncio.wait_for(close_http_client(), timeout=5)
+        except asyncio.TimeoutError:
+            logger.warning("HTTP client close timeout exceeded")
         
         logger.info("Shutdown complete")
 
