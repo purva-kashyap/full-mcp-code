@@ -63,6 +63,22 @@ class Config:
     FASTAPI_PORT: int = int(os.getenv("FASTAPI_PORT", "8000"))
     MCP_HOST: str = os.getenv("MCP_HOST", "0.0.0.0")
     MCP_PORT: int = int(os.getenv("MCP_PORT", "8001"))
+
+    # PostgreSQL Configuration (for get_db_users tool)
+    POSTGRES_DSN: str = os.getenv("POSTGRES_DSN", "")
+    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "")
+    POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "")
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "")
+    POSTGRES_SSLMODE: str = os.getenv("POSTGRES_SSLMODE", "prefer")
+    POSTGRES_USERS_TABLE: str = os.getenv("POSTGRES_USERS_TABLE", "users")
+    POSTGRES_POOL_SIZE: int = int(os.getenv("POSTGRES_POOL_SIZE", "10"))
+    POSTGRES_MAX_OVERFLOW: int = int(os.getenv("POSTGRES_MAX_OVERFLOW", "20"))
+    POSTGRES_POOL_TIMEOUT: int = int(os.getenv("POSTGRES_POOL_TIMEOUT", "30"))
+    POSTGRES_POOL_RECYCLE: int = int(os.getenv("POSTGRES_POOL_RECYCLE", "1800"))
+    POSTGRES_CONNECT_TIMEOUT: int = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "10"))
+    POSTGRES_COMMAND_TIMEOUT: int = int(os.getenv("POSTGRES_COMMAND_TIMEOUT", "30"))
     
     @classmethod
     def validate(cls) -> list[str]:
@@ -100,6 +116,24 @@ class Config:
         
         if cls.LOG_FORMAT not in ["json", "text"]:
             errors.append(f"LOG_FORMAT must be 'json' or 'text' (got {cls.LOG_FORMAT})")
+
+        if cls.POSTGRES_POOL_SIZE <= 0:
+            errors.append("POSTGRES_POOL_SIZE must be positive")
+
+        if cls.POSTGRES_MAX_OVERFLOW < 0:
+            errors.append("POSTGRES_MAX_OVERFLOW must be non-negative")
+
+        if cls.POSTGRES_POOL_TIMEOUT <= 0:
+            errors.append("POSTGRES_POOL_TIMEOUT must be positive")
+
+        if cls.POSTGRES_POOL_RECYCLE < 0:
+            errors.append("POSTGRES_POOL_RECYCLE must be non-negative")
+
+        if cls.POSTGRES_CONNECT_TIMEOUT <= 0:
+            errors.append("POSTGRES_CONNECT_TIMEOUT must be positive")
+
+        if cls.POSTGRES_COMMAND_TIMEOUT <= 0:
+            errors.append("POSTGRES_COMMAND_TIMEOUT must be positive")
         
         return errors
     
@@ -116,6 +150,16 @@ class Config:
         print(f"   Log Format: {cls.LOG_FORMAT}")
         print(f"   FastAPI: {cls.FASTAPI_HOST}:{cls.FASTAPI_PORT}")
         print(f"   MCP: {cls.MCP_HOST}:{cls.MCP_PORT}")
+        print(f"   PostgreSQL Host: {cls.POSTGRES_HOST or 'from POSTGRES_DSN'}")
+        print(f"   PostgreSQL Port: {cls.POSTGRES_PORT}")
+        print(f"   PostgreSQL DB: {cls.POSTGRES_DB or 'from POSTGRES_DSN'}")
+        print(f"   PostgreSQL Users Table: {cls.POSTGRES_USERS_TABLE}")
+        print(f"   PostgreSQL Pool Size: {cls.POSTGRES_POOL_SIZE}")
+        print(f"   PostgreSQL Max Overflow: {cls.POSTGRES_MAX_OVERFLOW}")
+        print(f"   PostgreSQL Pool Timeout: {cls.POSTGRES_POOL_TIMEOUT}s")
+        print(f"   PostgreSQL Pool Recycle: {cls.POSTGRES_POOL_RECYCLE}s")
+        print(f"   PostgreSQL Connect Timeout: {cls.POSTGRES_CONNECT_TIMEOUT}s")
+        print(f"   PostgreSQL Command Timeout: {cls.POSTGRES_COMMAND_TIMEOUT}s")
         print()
         print("⚡ Rate Limits:")
         print(f"   Global: {cls.RATE_LIMIT_GLOBAL}")

@@ -8,6 +8,7 @@ from src.application_mcp.mcp_instance import mcp
 from src.application_mcp.config import config
 from src.application_mcp.logging_config import setup_logging, get_logger
 from src.application_mcp.graph import close_http_client
+from src.application_mcp.db_connection import close_async_db_engine
 from src.application_mcp.metrics import metrics_collector
 # Import tools to register them
 from src.application_mcp import tools  # noqa: F401
@@ -100,6 +101,12 @@ async def run_server():
             await asyncio.wait_for(close_http_client(), timeout=5)
         except asyncio.TimeoutError:
             logger.warning("HTTP client close timeout exceeded")
+
+        logger.info("Closing DB engine...")
+        try:
+            await asyncio.wait_for(close_async_db_engine(), timeout=5)
+        except asyncio.TimeoutError:
+            logger.warning("DB engine close timeout exceeded")
         
         logger.info("Shutdown complete")
 

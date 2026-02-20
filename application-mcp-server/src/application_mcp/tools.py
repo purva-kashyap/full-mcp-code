@@ -2,6 +2,7 @@
 import logging
 from typing import Any
 from . import graph
+from . import database
 from .mcp_instance import mcp
 from .exceptions import ValidationError
 
@@ -96,6 +97,10 @@ def list_tools() -> list[dict[str, str]]:
         {
             "name": "get_calendar_event",
             "description": "Get details of a specific calendar event"
+        },
+        {
+            "name": "get_db_users",
+            "description": "Get all users from PostgreSQL database"
         }
     ]
     return tools
@@ -160,6 +165,23 @@ async def get_user_profile(user_email: str) -> dict[str, Any]:
         "mobilePhone": result.get("mobilePhone"),
         "businessPhones": result.get("businessPhones", []),
     }
+
+
+@mcp.tool
+async def get_db_users(email: str, limit: int = 100) -> list[dict[str, Any]]:
+    """
+    Get user details from PostgreSQL database for the provided email.
+
+    Uses POSTGRES_DSN or POSTGRES_* environment variables for connection.
+
+    Args:
+        email: User email to filter users table (e.g., "abc@abc.com")
+        limit: Maximum rows to return (default 100, max 1000)
+
+    Returns:
+        List of user rows matching the email
+    """
+    return await database.fetch_db_users(email, limit=limit)
 
 
 # ============================================================================
